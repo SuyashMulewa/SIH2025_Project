@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INGRES AI ChatBOT Prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.chat-container { max-height: 500px; overflow-y: auto; }
+.user-msg { background-color: #3b82f6; color: white; }
+.bot-msg { background-color: #e5e7eb; color: black; }
+.loader {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body class="flex flex-col items-center justify-start py-10 bg-gray-50">
+
+<div class="w-full max-w-3xl bg-white shadow-xl rounded-xl p-6 space-y-5">
+    <h1 class="text-3xl font-bold text-center text-gray-800">INGRES AI ChatBOT Prototype</h1>
+
+    <div id="chat" class="chat-container space-y-3 mb-4 p-3 bg-gray-100 rounded-lg shadow-inner"></div>
+
+    <div class="mb-4">
+        <label class="block text-gray-700 font-medium mb-2">Upload CSV/XLSX:</label>
+        <input type="file" id="fileInput" multiple accept=".csv,.xlsx" class="border rounded p-2 w-full bg-gray-50"/>
+        <button id="uploadBtn" class="mt-3 bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 transition">Upload</button>
+        <div id="uploadStatus" class="mt-2 text-sm text-gray-600 hidden"></div>
+    </div>
+
+    <div class="flex space-x-3 mb-4">
+        <select id="chatType" class="border rounded p-2 w-1/2 bg-gray-50">
+            <option value="sql-stored">Q&A with stored SQL-DB</option>
+            <option value="csv-uploaded">Q&A with uploaded CSV/XLSX SQL-DB</option>
+        </select>
+    </div>
+
+    <div class="flex space-x-3">
+        <input type="text" id="userInput" placeholder="Enter your question..." class="border rounded p-2 flex-1 bg-gray-50"/>
+        <button id="submitBtn" class="bg-blue-600 text-white rounded px-5 py-2 hover:bg-blue-700 transition">Submit</button>
+        <button id="clearBtn" class="bg-gray-300 text-black rounded px-4 py-2 hover:bg-gray-400 transition">Clear</button>
+    </div>
+
+    <div id="loadingIndicator" class="hidden flex justify-center py-2">
+        <div class="loader"></div>
+    </div>
+</div>
+
+<script>
+const chatContainer = document.getElementById("chat");
+const userInput = document.getElementById("userInput");
+const loadingIndicator = document.getElementById("loadingIndicator");
+const uploadStatus = document.getElementById("uploadStatus");
+
+function appendMessage(content, role){
+    const div = document.createElement("div");
+    div.className = `p-2 rounded-lg max-w-[70%] ${role==='user'?'user-msg ml-auto':'bot-msg'}`;
+    div.textContent = content;
+    chatContainer.appendChild(div);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function toggleLoading(show){
+    loadingIndicator.classList.toggle("hidden", !show);
+}
+
+// Submit question
+document.getElementById("submitBtn").addEventListener("click", async () => {
+    const msg = userInput.value.trim();
+    if(!msg) return;
+    appendMessage(msg, 'user');
+    userInput.value = '';
+    toggleLoading(true);
+
+    const chatType = document.getElementById("chatType").value;
+
+    try {
+        const response = await fetch("/ask", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({question: msg, chat_type: chatType})
+        });
+        const data = await response.json();
+        appendMessage(data.answer || data.error, 'bot');
+    } catch(err) {
+        appendMessage("Error connecting to backend.", 'bot');
+    } finally {
+        toggleLoading(false);
+    }
+});
+
+// Clear chat
+document.getElementById("clearBtn").addEventListener("click", () => {
+    chatContainer.innerHTML = '';
+    userInput.value = '';
+});
+
+// Upload files
+document.getElementById("uploadBtn").addEventListener("click", async () => {
+    const files = document.getElementById("fileInput").files;
+    if(files.length===0) return alert("Select files first");
+
+    const formData = new FormData();
+    for(const f of files) formData.append("files", f);
+
+    uploadStatus.textContent = "Uploading...";
+    uploadStatus.classList.remove("hidden");
+
+    try {
+        const res = await fetch("/upload", {method:"POST", body:formData});
+        const data = await res.json();
+        uploadStatus.textContent = data.message || data.error;
+    } catch(err) {
+        uploadStatus.textContent = "Error uploading files.";
+    }
+});
+</script>
+
+</body>
+</html>
